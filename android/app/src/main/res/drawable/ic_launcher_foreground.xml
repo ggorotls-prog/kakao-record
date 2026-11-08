@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 말풍선 + 아래 줄(기록) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FEE500" android:pathData="M54,30c-14.4,0 -26,9 -26,20c0,7 4.6,13.1 11.6,16.7l-2.6,9.3l10.3,-6.6c2.1,0.4 4.4,0.6 6.7,0.6c14.4,0 26,-9 26,-20S68.4,30 54,30z" />
+    <path android:fillColor="#3C1E1E" android:pathData="M42,46h24v3H42zM42,53h16v3H42z" />
+</vector>

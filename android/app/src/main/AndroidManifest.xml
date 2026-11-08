@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 카톡 기록을 슈파베이스에 보내기·새 버전 확인 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 「인터넷 될 때 보내기」 작업에 꼭 필요 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 폰을 다시 켜도 못 보낸 기록을 보내려고 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 배터리 「제한 없음」을 바로 묻기(삼성이 알림 읽기를 재우지 않게) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 스스로 업데이트(업무 기록 앱과 같은 방식) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+    <!-- 카카오톡이 깔려 있는지 보려고(안드로이드 11+는 적어 둬야 보인다) -->
+    <queries>
+        <package android:name="com.kakao.talk" />
+    </queries>
+
+    <application
+        android:label="카톡 기록"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+        android:supportsRtl="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 카톡 알림 읽기. 알림을 지우거나 답하지 않는다. 읽기만 -->
+        <service
+            android:name=".KakaoListener"
+            android:exported="true"
+            android:label="카톡 기록"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- 모은 기록 보내기(인터넷 될 때) -->
+        <service
+            android:name=".SendJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
+
+        <!-- 업데이트·재부팅 뒤 알림 읽기가 켜져 있나 보고, 못 보낸 기록을 보낸다 -->
+        <receiver android:name=".ReplacedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
