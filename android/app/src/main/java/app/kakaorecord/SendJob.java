@@ -28,10 +28,27 @@ public class SendJob extends JobService {
         try { js.schedule(b.build()); } catch (Exception ignored) {}
     }
 
+    // 15분마다: 못 보낸 기록을 다시 보내고, 새 버전이 있으면 알림만(설치는 앱을 열었을 때). 업무 기록 앱 SyncJob과 같음.
+    private static final int PERIODIC = 2;
+
+    static void schedulePeriodic(Context c) {
+        JobScheduler js = c.getSystemService(JobScheduler.class);
+        if (js == null || js.getPendingJob(PERIODIC) != null) return;
+        JobInfo.Builder b = new JobInfo.Builder(PERIODIC, new ComponentName(c, SendJob.class))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPeriodic(15 * 60_000L)
+                .setPersisted(true);
+        try { js.schedule(b.build()); } catch (Exception ignored) {}
+    }
+
     @Override
     public boolean onStartJob(JobParameters params) {
         new Thread(() -> {
             boolean again = !send(getApplicationContext());
+            if (params.getJobId() == PERIODIC) {
+                Updater.notifyIfNew(getApplicationContext());
+                again = false; // 15분 뒤 또 돈다
+            }
             jobFinished(params, again);
         }).start();
         return true;

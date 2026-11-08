@@ -104,6 +104,7 @@ public class MainActivity extends Activity {
                     v -> open(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())))));
         if (!kakaoInstalled()) top.addView(row("이 폰에 카카오톡이 없어요", "확인", v -> {}));
 
+        SendJob.schedulePeriodic(this);
         showRooms();
         showStatus();
         ui.removeCallbacks(tick);

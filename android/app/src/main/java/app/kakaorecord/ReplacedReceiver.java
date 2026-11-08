@@ -15,6 +15,7 @@ public class ReplacedReceiver extends BroadcastReceiver {
         String a = intent.getAction();
         if (!Intent.ACTION_MY_PACKAGE_REPLACED.equals(a) && !Intent.ACTION_BOOT_COMPLETED.equals(a)) return;
         SendJob.schedule(ctx);
+        SendJob.schedulePeriodic(ctx);
         if (enabled(ctx)) {
             try { NotificationListenerService.requestRebind(new ComponentName(ctx, KakaoListener.class)); } catch (Exception ignored) {}
             return;
