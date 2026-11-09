@@ -106,8 +106,7 @@ final class Store extends SQLiteOpenHelper {
             }
         }
         List<String> who = new ArrayList<>();
-        for (String w : senders.split("
-")) if (!w.isEmpty()) who.add(w);
+        for (String w : senders.split("\n")) if (!w.isEmpty()) who.add(w);
         boolean real = sender != null && !sender.isEmpty() && !"나".equals(sender);
         if (real && !who.contains(sender) && who.size() < 6) who.add(sender);
         boolean group = groupHint || who.size() >= 2 || (r != null && r.group);
@@ -124,16 +123,14 @@ final class Store extends SQLiteOpenHelper {
             v.put("grp", group ? 1 : 0);
             v.put("enabled", r.enabled ? 1 : 0);
             v.put("name", name);
-            v.put("senders", String.join("
-", who));
+            v.put("senders", String.join("\n", who));
             v.put("last_seen", System.currentTimeMillis());
             v.put("count", 1);
             db.insertWithOnConflict("rooms", null, v, SQLiteDatabase.CONFLICT_REPLACE);
         } else {
             if (group && !r.group && !touched) r.enabled = false; // 단톡으로 드러나면 켠 방만 모으기
             db.execSQL("update rooms set name=?, grp=?, enabled=?, senders=?, last_seen=?, count=count+1 where rkey=?",
-                    new Object[]{name, group ? 1 : 0, r.enabled ? 1 : 0, String.join("
-", who), System.currentTimeMillis(), key});
+                    new Object[]{name, group ? 1 : 0, r.enabled ? 1 : 0, String.join("\n", who), System.currentTimeMillis(), key});
         }
         r.name = name;
         r.group = group;

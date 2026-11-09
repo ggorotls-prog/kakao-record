@@ -115,10 +115,7 @@ public class KakaoListener extends NotificationListenerService {
 
     private static boolean add(Store st, Store.Room room, String sender, String body, long time, JSONObject meta) throws Exception {
         if (body.isEmpty()) return false;
-        String k = hash(room.key + "
-" + sender + "
-" + time + "
-" + body);
+        String k = hash(room.key + "\n" + sender + "\n" + time + "\n" + body);
         JSONObject r = new JSONObject();
         r.put("k", k);
         r.put("room", room.name);
