@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 // 카카오톡 알림을 읽어 방·보낸 사람·내용·시각을 모은다(2026-11-08 룡 결정).
-// 1:1은 기본 켜짐(끄면 안 모음), 단톡은 켠 방만. 알림을 지우거나 답하지 않는다. 읽기만.
+// 1:1·단톡 모두 기본 켜짐(끄면 안 모음, 2026-11-09 룡). 알림을 지우거나 답하지 않는다. 읽기만.
 public class KakaoListener extends NotificationListenerService {
     static final String KAKAO = "com.kakao.talk";
     static volatile boolean connected;
@@ -78,7 +78,9 @@ public class KakaoListener extends NotificationListenerService {
         if (label.isEmpty() && !groupName.isEmpty()) label = groupName;
 
         Store st = Store.get(this);
-        Store.Room room = st.seeRoom(key, label, lastSender, groupFlag || !groupName.isEmpty()); // 꺼진 방도 이름은 목록에 남긴다(켤 수 있게)
+        // 방 이름이 보낸 사람·제목과 다르면 단톡(1:1은 방 이름 = 상대 이름)
+        boolean labelGroup = !label.isEmpty() && !label.equals(lastSender) && !label.equals(str(title));
+        Store.Room room = st.seeRoom(key, label, lastSender, groupFlag || !groupName.isEmpty() || labelGroup); // 꺼진 방도 이름은 목록에 남긴다(켤 수 있게)
         if (!st.allOn() || !room.enabled) return;
         boolean group = room.group;
 

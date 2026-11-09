@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Locale;
 
 // 화면: 맨 위 전체 켜기·끄기, 마지막 저장 시각, 알림이 온 방 목록(이름만)과 방마다 스위치.
-// 1:1은 기본 켜짐(빼고 싶은 사람만 끔), 단톡은 켠 방만 모은다(2026-11-08 룡 결정).
+// 1:1·단톡 모두 기본 켜짐(빼고 싶은 방만 끔). 안 받을 방은 룡이 카톡에서 알림을 끈다(2026-11-09 룡 결정, 11-08 「단톡은 켠 방만」을 바꿈).
 public class MainActivity extends Activity {
     static volatile boolean visible;
 
@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
         people = card();
         col.addView(people, m(0, dp(24)));
 
-        col.addView(section("단톡방", "켠 방만 모아요. 꺼진 방은 내용을 저장하지 않아요"));
+        col.addView(section("단톡방", "기본으로 모아요. 빼고 싶은 방만 끄세요"));
         groups = card();
         col.addView(groups, m(0, dp(24)));
 

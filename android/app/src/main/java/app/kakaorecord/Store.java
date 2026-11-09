@@ -26,7 +26,7 @@ final class Store extends SQLiteOpenHelper {
     private final Context ctx;
 
     private Store(Context c) {
-        super(c, "kakao.db", null, 4);
+        super(c, "kakao.db", null, 5);
         ctx = c;
     }
 
@@ -53,8 +53,10 @@ final class Store extends SQLiteOpenHelper {
         // 2 → 3 (2026-11-09 룡): 「이아셀 (단톡)」처럼 사람 이름으로 지은 단톡방 이름을 없앤다.
         // 안 만진 방은 지우고(다음 알림 때 카톡 방 이름으로 다시 생김), 켜 둔 방은 켬을 지키고 이름만 「이름 모르는 단톡방」으로.
         // 3 → 4: 3에서 꼬리만 떼어 「이아셀」처럼 사람 이름이 남은 단톡방도 고친다.
-        if (o == 2 || o == 3) {
-            db.execSQL("delete from rooms where name like '% (단톡)' and touched=0");
+        // 4 → 5 (2026-11-09 룡): 단톡도 기본 켜짐으로 바뀌었고 「이아셀」이 남아 있었다.
+        // 방 목록을 새로 만든다. 룡이 일부러 끈 방만 남긴다(나머지는 다음 알림 때 카톡 방 이름으로 다시 생김, 켜짐).
+        if (o >= 2 && o < 5) {
+            db.execSQL("delete from rooms where not (touched=1 and enabled=0)");
             db.execSQL("update rooms set name=? where name like '% (단톡)' or (grp=1 and instr(char(10)||senders||char(10), char(10)||name||char(10)) > 0)",
                     new Object[]{UNKNOWN_GROUP});
         }
@@ -97,7 +99,7 @@ final class Store extends SQLiteOpenHelper {
     }
 
     // 알림이 온 방을 적어 두고 그 방의 지금 모습(이름·단톡·켜짐)을 돌려준다.
-    // 처음 본 방: 1:1은 켜짐, 단톡은 꺼짐. 1:1로 알던 방에 다른 사람이 말하면 단톡으로 바꾸고, 룡이 안 만졌으면 끈다.
+    // 처음 본 방은 1:1·단톡 모두 켜짐(2026-11-09 룡). 1:1로 알던 방에 다른 사람이 말하면 단톡으로 옮긴다(켜짐은 그대로).
     synchronized Room seeRoom(String key, String groupName, String sender, boolean groupHint) {
         SQLiteDatabase db = getWritableDatabase();
         Room r = null;
@@ -128,7 +130,7 @@ final class Store extends SQLiteOpenHelper {
         if (r == null) {
             r = new Room();
             r.key = key;
-            r.enabled = !group;
+            r.enabled = true;
             ContentValues v = new ContentValues();
             v.put("rkey", key);
             v.put("grp", group ? 1 : 0);
@@ -139,7 +141,6 @@ final class Store extends SQLiteOpenHelper {
             v.put("count", 1);
             db.insertWithOnConflict("rooms", null, v, SQLiteDatabase.CONFLICT_REPLACE);
         } else {
-            if (group && !r.group && !touched) r.enabled = false; // 단톡으로 드러나면 켠 방만 모으기
             db.execSQL("update rooms set name=?, grp=?, enabled=?, senders=?, last_seen=?, count=count+1 where rkey=?",
                     new Object[]{name, group ? 1 : 0, r.enabled ? 1 : 0, String.join("\n", who), System.currentTimeMillis(), key});
         }
