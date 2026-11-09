@@ -16,6 +16,7 @@ import java.util.List;
 final class Store extends SQLiteOpenHelper {
     private static Store inst;
     private static final String PREFS = "kakao-record";
+    static final String UNKNOWN_GROUP = "이름 모르는 단톡방";
 
     static synchronized Store get(Context c) {
         if (inst == null) inst = new Store(c.getApplicationContext());
@@ -25,7 +26,7 @@ final class Store extends SQLiteOpenHelper {
     private final Context ctx;
 
     private Store(Context c) {
-        super(c, "kakao.db", null, 3);
+        super(c, "kakao.db", null, 4);
         ctx = c;
     }
 
@@ -49,11 +50,13 @@ final class Store extends SQLiteOpenHelper {
             db.execSQL("drop table if exists rooms");
             createRooms(db);
         }
-        // 2 → 3 (2026-11-09 룡): 「이아셀 (단톡)」처럼 지어 붙인 이름을 없앤다.
-        // 안 만진 방은 지우고(다음 알림 때 카톡 방 이름으로 다시 생김), 켜 둔 방은 켬을 지키고 꼬리만 뗀다.
-        if (o == 2) {
+        // 2 → 3 (2026-11-09 룡): 「이아셀 (단톡)」처럼 사람 이름으로 지은 단톡방 이름을 없앤다.
+        // 안 만진 방은 지우고(다음 알림 때 카톡 방 이름으로 다시 생김), 켜 둔 방은 켬을 지키고 이름만 「이름 모르는 단톡방」으로.
+        // 3 → 4: 3에서 꼬리만 떼어 「이아셀」처럼 사람 이름이 남은 단톡방도 고친다.
+        if (o == 2 || o == 3) {
             db.execSQL("delete from rooms where name like '% (단톡)' and touched=0");
-            db.execSQL("update rooms set name=replace(name, ' (단톡)', '') where name like '% (단톡)'");
+            db.execSQL("update rooms set name=? where name like '% (단톡)' or (grp=1 and instr(char(10)||senders||char(10), char(10)||name||char(10)) > 0)",
+                    new Object[]{UNKNOWN_GROUP});
         }
     }
 
@@ -118,7 +121,9 @@ final class Store extends SQLiteOpenHelper {
         boolean group = groupHint || who.size() >= 2 || (r != null && r.group);
         String name;
         if (!groupName.isEmpty()) name = groupName;
-        // 방 이름을 못 읽으면 전에 알던 이름 그대로. 「(단톡)」 같은 꼬리는 붙이지 않는다(2026-11-09 룡).
+        // 단톡방에는 단톡방 이름만, 사람 이름은 절대 안 쓴다(2026-11-09 룡).
+        // 방 이름을 못 읽었으면: 전에 읽은 방 이름이 있으면 그대로, 없으면 「이름 모르는 단톡방」.
+        else if (group) name = (r != null && r.name != null && !r.name.isEmpty() && !who.contains(r.name) && !r.name.endsWith(" (단톡)")) ? r.name : UNKNOWN_GROUP;
         else name = r != null ? r.name : (real ? sender : "알 수 없음");
         if (r == null) {
             r = new Room();
