@@ -25,7 +25,7 @@ final class Store extends SQLiteOpenHelper {
     private final Context ctx;
 
     private Store(Context c) {
-        super(c, "kakao.db", null, 2);
+        super(c, "kakao.db", null, 3);
         ctx = c;
     }
 
@@ -48,6 +48,12 @@ final class Store extends SQLiteOpenHelper {
         if (o < 2) {
             db.execSQL("drop table if exists rooms");
             createRooms(db);
+        }
+        // 2 → 3 (2026-11-09 룡): 「이아셀 (단톡)」처럼 지어 붙인 이름을 없앤다.
+        // 안 만진 방은 지우고(다음 알림 때 카톡 방 이름으로 다시 생김), 켜 둔 방은 켬을 지키고 꼬리만 뗀다.
+        if (o == 2) {
+            db.execSQL("delete from rooms where name like '% (단톡)' and touched=0");
+            db.execSQL("update rooms set name=replace(name, ' (단톡)', '') where name like '% (단톡)'");
         }
     }
 
@@ -112,7 +118,7 @@ final class Store extends SQLiteOpenHelper {
         boolean group = groupHint || who.size() >= 2 || (r != null && r.group);
         String name;
         if (!groupName.isEmpty()) name = groupName;
-        else if (group) name = String.join("·", who.subList(0, Math.min(3, who.size()))) + (who.size() > 3 ? " 외" : "") + " (단톡)";
+        // 방 이름을 못 읽으면 전에 알던 이름 그대로. 「(단톡)」 같은 꼬리는 붙이지 않는다(2026-11-09 룡).
         else name = r != null ? r.name : (real ? sender : "알 수 없음");
         if (r == null) {
             r = new Room();
