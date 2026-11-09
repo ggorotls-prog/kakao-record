@@ -48,27 +48,47 @@ public class KakaoListener extends NotificationListenerService {
         boolean styled = msgs != null && msgs.length > 0;
         boolean groupFlag = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false);
 
-        // 1:1인지 단톡인지: 메시지 꼴 알림이면 안드로이드의 「단톡」 표시, 아니면 작은 글씨(방 이름)가 있는지로.
-        boolean group = styled ? groupFlag : (sub != null && sub.length() > 0);
-        String room = str(group ? first(conv, sub, title) : first(conv, title));
-        if (room.isEmpty()) return;
+        CharSequence summary = x.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
+        CharSequence hidden = x.getCharSequence("android.hiddenConversationTitle");
+
+        // 마지막 메시지를 보낸 사람
+        String lastSender = str(title);
+        if (styled && msgs[msgs.length - 1] instanceof Bundle) {
+            String s = sender((Bundle) msgs[msgs.length - 1]);
+            if (!s.isEmpty()) lastSender = s;
+        }
+        // 방 이름이 따로 오면 단톡(보낸 사람 이름과 같으면 방 이름이 아니다).
+        // 카톡은 단톡 표시(isGroupConversation)를 안 붙이고 제목에 보낸 사람을 넣을 때가 있다(2026-11-09 실제 알림으로 확인).
+        // 그래서 방 번호(shortcutId, 같은 방이면 같음)로 묶고, 한 방에서 두 사람 이상이 말하면 단톡으로 본다(Store.seeRoom).
+        String groupName = "";
+        for (CharSequence c : new CharSequence[]{conv, sub, summary, hidden}) {
+            String v = str(c);
+            if (!v.isEmpty() && !v.equals(lastSender) && !v.equals(str(title))) { groupName = v; break; }
+        }
+        String shortcut = str(n.getShortcutId());
+        if (shortcut.isEmpty()) shortcut = str(sbn.getTag());
+        String key = shortcut.isEmpty() ? "n:" + (groupName.isEmpty() ? str(title) : groupName) : "s:" + shortcut;
+        if (key.length() <= 2) return;
 
         Store st = Store.get(this);
-        boolean roomOn = st.seeRoom(room, group); // 방 이름은 꺼져 있어도 목록에 남긴다(켤 수 있게)
-        if (!st.allOn() || !roomOn) return;
+        Store.Room room = st.seeRoom(key, groupName, lastSender, groupFlag || !groupName.isEmpty()); // 꺼진 방도 이름은 목록에 남긴다(켤 수 있게)
+        if (!st.allOn() || !room.enabled) return;
+        boolean group = room.group;
 
         // 확인용 꼬리표(내용 없음): 1:1·단톡 가르기가 맞는지 실제 알림으로 보려고
         JSONObject meta = new JSONObject();
         meta.put("tag", str(sbn.getTag()));
-        meta.put("id", sbn.getId());
         meta.put("channel", str(n.getChannelId()));
         meta.put("shortcut", str(n.getShortcutId()));
         meta.put("isGroupFlag", groupFlag);
         meta.put("conv", str(conv));
         meta.put("sub", str(sub));
+        meta.put("summary", str(summary));
+        meta.put("hidden", str(hidden));
         meta.put("title", str(title));
         meta.put("styled", styled);
         meta.put("count", styled ? msgs.length : 0);
+        meta.put("keys", new org.json.JSONArray(x.keySet()));
 
         boolean added = false;
         if (styled) {
@@ -76,40 +96,39 @@ public class KakaoListener extends NotificationListenerService {
             for (Parcelable p : msgs) {
                 if (!(p instanceof Bundle)) continue;
                 Bundle m = (Bundle) p;
-                CharSequence body = m.getCharSequence("text");
-                long time = m.getLong("time", n.when);
-                String sender = "";
-                Person who = m.getParcelable("sender_person");
-                if (who != null && who.getName() != null) sender = who.getName().toString();
-                else if (m.getCharSequence("sender") != null) sender = m.getCharSequence("sender").toString();
-                if (sender.isEmpty()) sender = group ? "" : "나"; // 보낸 사람이 없으면 내가 알림에서 답한 것
-                added |= add(st, room, group, sender, str(body), time, meta);
+                String who = sender(m);
+                if (who.isEmpty()) who = "나"; // 보낸 사람이 없으면 내가 알림에서 답한 것
+                added |= add(st, room, who, str(m.getCharSequence("text")), m.getLong("time", n.when), meta);
             }
         } else {
-            String sender = group ? str(title) : room;
-            added = add(st, room, group, sender, str(text), n.when > 0 ? n.when : System.currentTimeMillis(), meta);
+            added = add(st, room, lastSender, str(text), n.when > 0 ? n.when : System.currentTimeMillis(), meta);
         }
         if (added) SendJob.schedule(this);
     }
 
-    private static boolean add(Store st, String room, boolean group, String sender, String body, long time, JSONObject meta) throws Exception {
+    private static String sender(Bundle m) {
+        Person who = m.getParcelable("sender_person");
+        if (who != null && who.getName() != null) return who.getName().toString().trim();
+        CharSequence s = m.getCharSequence("sender");
+        return s == null ? "" : s.toString().trim();
+    }
+
+    private static boolean add(Store st, Store.Room room, String sender, String body, long time, JSONObject meta) throws Exception {
         if (body.isEmpty()) return false;
-        String k = hash((group ? "g:" : "p:") + room + "\n" + sender + "\n" + time + "\n" + body);
+        String k = hash(room.key + "
+" + sender + "
+" + time + "
+" + body);
         JSONObject r = new JSONObject();
         r.put("k", k);
-        r.put("room", room);
-        r.put("room_key", (group ? "g:" : "p:") + room);
+        r.put("room", room.name);
+        r.put("room_key", room.key);
         r.put("sender", sender);
         r.put("body", body);
-        r.put("is_group", group);
+        r.put("is_group", room.group);
         r.put("posted_at", time);
         r.put("meta", meta);
         return st.queue(k, r.toString());
-    }
-
-    private static String first(CharSequence... a) {
-        for (CharSequence s : a) if (s != null && s.toString().trim().length() > 0) return s.toString();
-        return "";
     }
 
     private static String str(Object o) { return o == null ? "" : o.toString().trim(); }

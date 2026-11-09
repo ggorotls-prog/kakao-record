@@ -25,20 +25,31 @@ final class Store extends SQLiteOpenHelper {
     private final Context ctx;
 
     private Store(Context c) {
-        super(c, "kakao.db", null, 1);
+        super(c, "kakao.db", null, 2);
         ctx = c;
     }
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        // rkey = (p: 1:1 / g: 단톡) + 방 이름
-        db.execSQL("create table rooms (rkey text primary key, name text, grp integer, enabled integer, last_seen integer, count integer default 0)");
+        createRooms(db);
         // k = 같은 메시지를 두 번 넣지 않으려는 열쇠. sent = 보냈으면 1
         db.execSQL("create table outbox (k text primary key, json text, at integer, sent integer default 0)");
     }
 
+    // rkey = s:카톡 방 번호(알림의 shortcutId, 같은 방이면 같음) — 없으면 n:이름
+    // senders = 이 방에서 본 보낸 사람(줄바꿈). 둘 이상이면 단톡. touched = 룡이 스위치를 만졌음
+    private static void createRooms(SQLiteDatabase db) {
+        db.execSQL("create table rooms (rkey text primary key, name text, grp integer, enabled integer, touched integer default 0, senders text default '', last_seen integer, count integer default 0)");
+    }
+
+    // 1 → 2 (2026-11-09): 카톡이 단톡 알림에 단톡 표시를 안 붙여 사람마다 1:1로 잡혔다. 방 번호로 다시 모은다(방 목록만 새로).
     @Override
-    public void onUpgrade(SQLiteDatabase db, int o, int n) {}
+    public void onUpgrade(SQLiteDatabase db, int o, int n) {
+        if (o < 2) {
+            db.execSQL("drop table if exists rooms");
+            createRooms(db);
+        }
+    }
 
     // ---- 설정 ----
 
@@ -76,32 +87,61 @@ final class Store extends SQLiteOpenHelper {
         int count;
     }
 
-    // 알림이 온 방을 적어 두고, 이 방을 모아도 되는지 돌려준다. 처음 본 방: 1:1은 켜짐, 단톡은 꺼짐.
-    synchronized boolean seeRoom(String name, boolean group) {
-        String key = (group ? "g:" : "p:") + name;
+    // 알림이 온 방을 적어 두고 그 방의 지금 모습(이름·단톡·켜짐)을 돌려준다.
+    // 처음 본 방: 1:1은 켜짐, 단톡은 꺼짐. 1:1로 알던 방에 다른 사람이 말하면 단톡으로 바꾸고, 룡이 안 만졌으면 끈다.
+    synchronized Room seeRoom(String key, String groupName, String sender, boolean groupHint) {
         SQLiteDatabase db = getWritableDatabase();
-        boolean enabled;
-        try (Cursor c = db.rawQuery("select enabled from rooms where rkey=?", new String[]{key})) {
+        Room r = null;
+        String senders = "";
+        boolean touched = false;
+        try (Cursor c = db.rawQuery("select name, grp, enabled, touched, senders from rooms where rkey=?", new String[]{key})) {
             if (c.moveToFirst()) {
-                enabled = c.getInt(0) == 1;
-                db.execSQL("update rooms set last_seen=?, count=count+1 where rkey=?", new Object[]{System.currentTimeMillis(), key});
-                return enabled;
+                r = new Room();
+                r.key = key;
+                r.name = c.getString(0);
+                r.group = c.getInt(1) == 1;
+                r.enabled = c.getInt(2) == 1;
+                touched = c.getInt(3) == 1;
+                senders = c.getString(4) == null ? "" : c.getString(4);
             }
         }
-        enabled = !group;
-        ContentValues v = new ContentValues();
-        v.put("rkey", key);
-        v.put("name", name);
-        v.put("grp", group ? 1 : 0);
-        v.put("enabled", enabled ? 1 : 0);
-        v.put("last_seen", System.currentTimeMillis());
-        v.put("count", 1);
-        db.insertWithOnConflict("rooms", null, v, SQLiteDatabase.CONFLICT_IGNORE);
-        return enabled;
+        List<String> who = new ArrayList<>();
+        for (String w : senders.split("
+")) if (!w.isEmpty()) who.add(w);
+        boolean real = sender != null && !sender.isEmpty() && !"나".equals(sender);
+        if (real && !who.contains(sender) && who.size() < 6) who.add(sender);
+        boolean group = groupHint || who.size() >= 2 || (r != null && r.group);
+        String name;
+        if (!groupName.isEmpty()) name = groupName;
+        else if (group) name = String.join("·", who.subList(0, Math.min(3, who.size()))) + (who.size() > 3 ? " 외" : "") + " (단톡)";
+        else name = r != null ? r.name : (real ? sender : "알 수 없음");
+        if (r == null) {
+            r = new Room();
+            r.key = key;
+            r.enabled = !group;
+            ContentValues v = new ContentValues();
+            v.put("rkey", key);
+            v.put("grp", group ? 1 : 0);
+            v.put("enabled", r.enabled ? 1 : 0);
+            v.put("name", name);
+            v.put("senders", String.join("
+", who));
+            v.put("last_seen", System.currentTimeMillis());
+            v.put("count", 1);
+            db.insertWithOnConflict("rooms", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        } else {
+            if (group && !r.group && !touched) r.enabled = false; // 단톡으로 드러나면 켠 방만 모으기
+            db.execSQL("update rooms set name=?, grp=?, enabled=?, senders=?, last_seen=?, count=count+1 where rkey=?",
+                    new Object[]{name, group ? 1 : 0, r.enabled ? 1 : 0, String.join("
+", who), System.currentTimeMillis(), key});
+        }
+        r.name = name;
+        r.group = group;
+        return r;
     }
 
     synchronized void setRoom(String key, boolean on) {
-        getWritableDatabase().execSQL("update rooms set enabled=? where rkey=?", new Object[]{on ? 1 : 0, key});
+        getWritableDatabase().execSQL("update rooms set enabled=?, touched=1 where rkey=?", new Object[]{on ? 1 : 0, key});
     }
 
     synchronized List<Room> rooms() {
