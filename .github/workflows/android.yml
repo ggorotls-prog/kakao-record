@@ -66,6 +66,13 @@ jobs:
             if grep -q "FATAL EXCEPTION" crash.txt; then exit 1; fi
             adb shell pidof app.kakaorecord || { echo "앱이 꺼져 있어요"; exit 1; }
             echo "앱이 켜져 있어요"
+            adb exec-out screencap -p > shot-light.png || true
+            adb shell cmd uimode night yes || true
+            adb shell am force-stop app.kakaorecord
+            adb shell am start -W -n app.kakaorecord/.MainActivity
+            sleep 6
+            adb exec-out screencap -p > shot-dark.png || true
+            adb shell cmd uimode night no || true
             # 알림 읽기를 켜도 꺼지지 않는지
             adb shell cmd notification allow_listener app.kakaorecord/app.kakaorecord.KakaoListener || true
             adb shell am force-stop app.kakaorecord
@@ -87,6 +94,12 @@ jobs:
             if grep -q "FATAL EXCEPTION" crash3.txt; then exit 1; fi
             adb shell pidof app.kakaorecord || { echo "인터넷 끄니 앱이 꺼져 있어요"; exit 1; }
             echo "인터넷 꺼도 앱이 켜져 있어요"
+      # 화면 사진(밝은·어두운): 모양 확인용
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: shot-*.png
 
   # main에서 만들고 가상 폰 확인까지 통과하면, APK를 사이트(app/)에 올린다.
   # 폰의 앱이 app/version.json을 보고 새 버전이면 스스로 받아서 업데이트한다. (플레이 스토어 없이 0원)

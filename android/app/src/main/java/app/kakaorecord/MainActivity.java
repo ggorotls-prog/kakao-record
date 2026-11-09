@@ -16,7 +16,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -33,6 +32,9 @@ public class MainActivity extends Activity {
     static volatile boolean visible;
 
     private LinearLayout top, status, people, groups;
+    // 색: 업무 기록 사이트와 같은 값(밝은·어두운 화면)
+    private boolean dark;
+    private int BG, CARD, INK, SUB, LINE, ACCENT, ON_ACCENT, WARN_BG, WARN;
     private Switch all;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
@@ -49,43 +51,60 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
 
+        dark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        BG = c(dark ? "#161615" : "#f6f5f1");
+        CARD = c(dark ? "#22221f" : "#ffffff");
+        INK = c(dark ? "#ecebe6" : "#1f1f1d");
+        SUB = c(dark ? "#a3a29b" : "#6b6a64");
+        LINE = c(dark ? "#34332f" : "#e4e2db");
+        ACCENT = c(dark ? "#6fb39f" : "#2f5d50");
+        ON_ACCENT = c(dark ? "#10201b" : "#ffffff");
+        WARN_BG = c(dark ? "#352a15" : "#fff4e0");
+        WARN = c(dark ? "#f0b350" : "#b26a00");
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+        if (!dark) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+
         ScrollView sv = new ScrollView(this);
+        sv.setBackgroundColor(BG);
+        sv.setFitsSystemWindows(true);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(20), dp(24), dp(20), dp(40));
+        col.setPadding(dp(16), dp(20), dp(16), dp(40));
         sv.addView(col);
         setContentView(sv);
 
+        // 머리: 이름 + 마지막 저장
+        col.addView(text("카톡 기록", 26, true), m(0, dp(2)));
+        status = new LinearLayout(this);
+        status.setOrientation(LinearLayout.VERTICAL);
+        col.addView(status, m(0, dp(16)));
+
+        // 해야 할 설정(필요할 때만)
         top = new LinearLayout(this);
         top.setOrientation(LinearLayout.VERTICAL);
         col.addView(top);
 
-        LinearLayout head = new LinearLayout(this);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(text("카톡 기록", 24, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // 전체 켜기
+        LinearLayout master = card();
         all = new Switch(this);
         all.setChecked(Store.get(this).allOn());
         all.setOnCheckedChangeListener((v, on) -> { Store.get(this).setAllOn(on); showStatus(); });
-        head.addView(all);
-        col.addView(head, m(0, dp(4)));
+        master.addView(switchRow("카톡 모으기", "끄면 아무것도 모으지 않아요", all));
+        col.addView(master, m(0, dp(24)));
 
-        status = new LinearLayout(this);
-        status.setOrientation(LinearLayout.VERTICAL);
-        col.addView(status, m(0, dp(20)));
+        col.addView(section("1:1 대화", "기본으로 모아요. 빼고 싶은 사람만 끄세요"));
+        people = card();
+        col.addView(people, m(0, dp(24)));
 
-        col.addView(text("1:1 대화", 20, true), m(0, dp(2)));
-        col.addView(gray("기본으로 모아요. 빼고 싶은 사람만 끄세요."), m(0, dp(8)));
-        people = new LinearLayout(this);
-        people.setOrientation(LinearLayout.VERTICAL);
-        col.addView(people, m(0, dp(20)));
+        col.addView(section("단톡방", "켠 방만 모아요. 꺼진 방은 내용을 저장하지 않아요"));
+        groups = card();
+        col.addView(groups, m(0, dp(24)));
 
-        col.addView(text("단톡방", 20, true), m(0, dp(2)));
-        col.addView(gray("켠 방만 모아요. 꺼진 방은 내용을 저장하지 않아요."), m(0, dp(8)));
-        groups = new LinearLayout(this);
-        groups.setOrientation(LinearLayout.VERTICAL);
-        col.addView(groups, m(0, dp(20)));
-
-        col.addView(gray("버전 " + BuildConfig.VERSION_NAME + " · 사진·파일은 알림에 뜬 글자만 저장해요"));
+        TextView foot = text("버전 " + BuildConfig.VERSION_NAME + " · 사진·파일은 알림에 뜬 글자만 저장해요", 12, false);
+        foot.setTextColor(SUB);
+        foot.setGravity(Gravity.CENTER);
+        col.addView(foot, m(dp(8), 0));
     }
 
     @Override
@@ -103,6 +122,7 @@ public class MainActivity extends Activity {
             top.addView(row("배터리 「제한 없음」을 켜면 카톡 기록이 멈추지 않아요", "켜기",
                     v -> open(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())))));
         if (!kakaoInstalled()) top.addView(row("이 폰에 카카오톡이 없어요", "확인", v -> {}));
+        if (top.getChildCount() > 0) top.addView(new View(this), m(0, dp(14)));
 
         SendJob.schedulePeriodic(this);
         showRooms();
@@ -145,30 +165,39 @@ public class MainActivity extends Activity {
         status.removeAllViews();
         long t = st.lastSaved();
         int wait = st.pendingCount();
-        String last = t == 0 ? "아직 저장한 적 없어요" : "마지막 저장 " + new SimpleDateFormat("M월 d일 HH:mm", Locale.KOREA).format(new Date(t));
-        status.addView(text(st.allOn() ? last : "꺼져 있어요 — 아무것도 모으지 않아요", 15, false));
         String link = st.link();
-        if (wait > 0) status.addView(gray("보낼 것 " + wait + "개" + ("wait".equals(link) ? " · 연결 허락을 기다려요(Claude가 허락하면 보내져요)" : " · 인터넷이 되면 보내요")));
-        else if ("wait".equals(link)) status.addView(gray("연결 허락을 기다려요(Claude가 허락하면 저장돼요)"));
-        else if ("full".equals(link)) status.addView(gray("연결 대기 칸이 꽉 찼어요 — Claude에게 알려 주세요"));
+        String line;
+        if (!st.allOn()) line = "꺼져 있어요";
+        else if (t == 0) line = "아직 저장한 적 없어요";
+        else line = "마지막 저장 " + new SimpleDateFormat("M월 d일 a h:mm", Locale.KOREA).format(new Date(t));
+        if (wait > 0) line += " · 보낼 것 " + wait + "개";
+        TextView tv = text(line, 14, false);
+        tv.setTextColor(SUB);
+        status.addView(tv);
+        String why = "wait".equals(link) ? "연결 허락을 기다려요 — Claude가 허락하면 저장돼요"
+                : "full".equals(link) ? "연결 대기 칸이 꽉 찼어요 — Claude에게 알려 주세요"
+                : wait > 0 ? "인터넷이 되면 보내요" : "";
+        if (!why.isEmpty()) {
+            TextView w = text(why, 13, false);
+            w.setTextColor(WARN);
+            status.addView(w, m(dp(2), 0));
+        }
     }
 
     private void showRooms() {
         people.removeAllViews();
         groups.removeAllViews();
         List<Store.Room> rooms = Store.get(this).rooms();
-        int np = 0, ng = 0;
         for (Store.Room r : rooms) {
             Switch s = new Switch(this);
-            s.setText(r.name);
-            s.setTextSize(16);
-            s.setPadding(dp(4), dp(10), 0, dp(10));
             s.setChecked(r.enabled);
             s.setOnCheckedChangeListener((v, on) -> Store.get(this).setRoom(r.key, on));
-            if (r.group) { groups.addView(s); ng++; } else { people.addView(s); np++; }
+            LinearLayout box = r.group ? groups : people;
+            if (box.getChildCount() > 0) box.addView(divider());
+            box.addView(switchRow(r.name, null, s));
         }
-        if (np == 0) people.addView(gray("아직 알림이 온 1:1 대화가 없어요"));
-        if (ng == 0) groups.addView(gray("아직 알림이 온 단톡방이 없어요"));
+        if (people.getChildCount() == 0) people.addView(empty("아직 알림이 온 1:1 대화가 없어요"));
+        if (groups.getChildCount() == 0) groups.addView(empty("아직 알림이 온 단톡방이 없어요"));
     }
 
     private boolean backFromSecurity;
@@ -217,25 +246,82 @@ public class MainActivity extends Activity {
         try { startActivity(i); } catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
     }
 
+    // 해야 할 설정 한 줄: 노란 카드 + 오른쪽 버튼
     private LinearLayout row(String msg, String btn, View.OnClickListener on) {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(dp(12), dp(4), dp(12), dp(4));
-        r.setBackgroundColor(Color.parseColor("#FEF3C7"));
-        r.addView(text(msg, 14, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Button b = new Button(this);
-        b.setText(btn);
-        b.setAllCaps(false);
+        r.setPadding(dp(16), dp(12), dp(12), dp(12));
+        r.setBackground(round(WARN_BG, 0, 14));
+        TextView t = text(msg, 14, false);
+        t.setTextColor(dark ? INK : c("#5c3a00"));
+        r.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView b = text(btn, 14, true);
+        b.setTextColor(ON_ACCENT);
+        b.setPadding(dp(16), dp(8), dp(16), dp(8));
+        b.setBackground(round(ACCENT, 0, 999));
         b.setOnClickListener(on);
-        r.addView(b);
-        r.setLayoutParams(m(0, dp(8)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(12), 0, 0, 0);
+        r.addView(b, lp);
+        r.setLayoutParams(m(0, dp(10)));
         return r;
     }
 
-    private TextView gray(String s) {
-        TextView t = text(s, 13, false);
-        t.setTextColor(Color.parseColor("#6B7280"));
+    private LinearLayout card() {
+        LinearLayout k = new LinearLayout(this);
+        k.setOrientation(LinearLayout.VERTICAL);
+        k.setBackground(round(CARD, LINE, 16));
+        return k;
+    }
+
+    private LinearLayout section(String title, String sub) {
+        LinearLayout s = new LinearLayout(this);
+        s.setOrientation(LinearLayout.VERTICAL);
+        s.setPadding(dp(4), 0, dp(4), dp(8));
+        s.addView(text(title, 17, true));
+        TextView t = text(sub, 13, false);
+        t.setTextColor(SUB);
+        s.addView(t);
+        return s;
+    }
+
+    // 카드 안 한 줄: 왼쪽 글, 오른쪽 스위치(강조색). 줄 어디를 눌러도 켜고 끈다
+    private LinearLayout switchRow(String title, String sub, Switch sw) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(16), dp(14), dp(12), dp(14));
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        txt.addView(text(title, 16, false));
+        if (sub != null) {
+            TextView t = text(sub, 13, false);
+            t.setTextColor(SUB);
+            txt.addView(t);
+        }
+        r.addView(txt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        int[][] st = {{android.R.attr.state_checked}, {}};
+        sw.setThumbTintList(new android.content.res.ColorStateList(st, new int[]{ACCENT, dark ? c("#bdbcb6") : c("#ffffff")}));
+        sw.setTrackTintList(new android.content.res.ColorStateList(st, new int[]{withAlpha(ACCENT, 110), dark ? c("#4a4944") : c("#cfcdc5")}));
+        r.addView(sw);
+        r.setOnClickListener(v -> sw.toggle());
+        return r;
+    }
+
+    private View divider() {
+        View d = new View(this);
+        d.setBackgroundColor(LINE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f)));
+        lp.setMargins(dp(16), 0, 0, 0);
+        d.setLayoutParams(lp);
+        return d;
+    }
+
+    private TextView empty(String s) {
+        TextView t = text(s, 14, false);
+        t.setTextColor(SUB);
+        t.setPadding(dp(16), dp(16), dp(16), dp(16));
         return t;
     }
 
@@ -243,10 +329,23 @@ public class MainActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
-        t.setTextColor(bold ? Color.parseColor("#111827") : Color.parseColor("#374151"));
+        t.setTextColor(INK);
+        t.setLineSpacing(0, 1.15f);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         return t;
     }
+
+    private android.graphics.drawable.GradientDrawable round(int fill, int stroke, int radiusDp) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        if (stroke != 0) g.setStroke(Math.max(1, dp(0.5f)), stroke);
+        return g;
+    }
+
+    private static int c(String hex) { return Color.parseColor(hex); }
+
+    private static int withAlpha(int color, int a) { return (color & 0x00ffffff) | (a << 24); }
 
     private LinearLayout.LayoutParams m(int topM, int bottom) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
