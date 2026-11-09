@@ -2,6 +2,8 @@ package app.kakaorecord;
 
 import android.app.Notification;
 import android.app.Person;
+import android.content.pm.ShortcutInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.service.notification.NotificationListenerService;
@@ -70,8 +72,13 @@ public class KakaoListener extends NotificationListenerService {
         String key = shortcut.isEmpty() ? "n:" + (groupName.isEmpty() ? str(title) : groupName) : "s:" + shortcut;
         if (key.length() <= 2) return;
 
+        // 카톡 방 이름 그대로(2026-11-09 룡: 「이아셀(단톡)」 말고 톡방 이름이 똑같이 나오게).
+        // 카톡이 알림에 붙이는 대화 바로가기의 이름표 = 카톡 방 목록에 보이는 방 이름.
+        String label = roomLabel(sbn);
+        if (label.isEmpty() && !groupName.isEmpty()) label = groupName;
+
         Store st = Store.get(this);
-        Store.Room room = st.seeRoom(key, groupName, lastSender, groupFlag || !groupName.isEmpty()); // 꺼진 방도 이름은 목록에 남긴다(켤 수 있게)
+        Store.Room room = st.seeRoom(key, label, lastSender, groupFlag || !groupName.isEmpty()); // 꺼진 방도 이름은 목록에 남긴다(켤 수 있게)
         if (!st.allOn() || !room.enabled) return;
         boolean group = room.group;
 
@@ -86,6 +93,7 @@ public class KakaoListener extends NotificationListenerService {
         meta.put("summary", str(summary));
         meta.put("hidden", str(hidden));
         meta.put("title", str(title));
+        meta.put("label", label);
         meta.put("styled", styled);
         meta.put("count", styled ? msgs.length : 0);
         meta.put("keys", new org.json.JSONArray(x.keySet()));
@@ -104,6 +112,22 @@ public class KakaoListener extends NotificationListenerService {
             added = add(st, room, lastSender, str(text), n.when > 0 ? n.when : System.currentTimeMillis(), meta);
         }
         if (added) SendJob.schedule(this);
+    }
+
+    // 알림에 붙은 대화 바로가기의 이름(안드로이드 11부터). 못 읽으면 빈 값.
+    private String roomLabel(StatusBarNotification sbn) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return "";
+        try {
+            RankingMap map = getCurrentRanking();
+            Ranking rk = new Ranking();
+            if (map == null || !map.getRanking(sbn.getKey(), rk)) return "";
+            ShortcutInfo si = rk.getConversationShortcutInfo();
+            if (si == null) return "";
+            String s = str(si.getLongLabel());
+            return s.isEmpty() ? str(si.getShortLabel()) : s;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static String sender(Bundle m) {
