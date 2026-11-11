@@ -41,6 +41,9 @@ public class KakaoListener extends NotificationListenerService {
         if (n == null || (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return; // 「안 읽은 메시지 n개」 묶음 알림은 뺀다
         Bundle x = n.extras;
         if (x == null) return;
+        // 파일 내려받기 알림(제목 = 파일 이름, 「다운로드가 완료되었습니다」)은 대화가 아니다 → 뺀다.
+        // 대화 알림은 new_message_v2·quiet_new_message 채널, 내려받기는 general 채널 + 진행 막대(2026-11-11 실제 알림 2개로 확인).
+        if ("general".equals(n.getChannelId()) || x.containsKey(Notification.EXTRA_PROGRESS_MAX)) return;
 
         CharSequence title = x.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence text = x.getCharSequence(Notification.EXTRA_TEXT);
