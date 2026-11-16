@@ -139,8 +139,10 @@ public class MainActivity extends Activity {
         // 앱을 열 때마다 새 버전이 있나 본다(업무 기록 앱과 같은 방식, 2026-11-07 룡 결정)
         boolean retry = backFromSecurity;
         backFromSecurity = false;
+        Updater.askNotifications(this); // 알림이 꺼져 있으면 열 때마다 다시 묻기(2026-11-16)
         new Thread(() -> {
             int latest = Updater.latest(getApplicationContext());
+            if (latest > 0 && latest <= BuildConfig.VERSION_CODE) Updater.clearNotice(getApplicationContext());
             if (latest <= BuildConfig.VERSION_CODE) return;
             if (!Updater.canInstall(this)) { runOnUiThread(this::askInstallPermission); return; }
             // 보안 화면에서 자동 차단을 끄고 돌아왔으면 바로 설치
